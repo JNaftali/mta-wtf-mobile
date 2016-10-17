@@ -17,6 +17,7 @@ export default class Map extends Component {
       stations: [],
       lines: []
     }
+    this.lineObjects = {}
 
     fetch('https://wtf-mta.herokuapp.com/stations')
     .then((response)=> response.json())
@@ -50,6 +51,31 @@ export default class Map extends Component {
     })
   }
 
+  offsetStationPosition(station, lat_offset, lng_offset) {
+    return {
+      lat: station.lat + lat_offset,
+      lng: station.lng + lng_offset
+    }
+  }
+
+  drawLinesBetween(station, other_station) {
+    const name = [station.mta_id, other_station.mta_id].sort().join('_')
+    const lines = this.getConnectingLines(station, other_station).sort((a,b) => a.line_id > b.line_id ? 1 : -1)
+    const angle = Math.atan((station.lng - other_station.lng) / (other_station.lat - station.lat))
+    const lat_offset = Math.sin(angle)
+    const lng_offset = Math.cos(angle)
+    return lines.reduce((result,line, i) => {
+      const factor = (i - (lines.length / 2)) / 10000
+      const coords = [this.offsetStationPosition(station, lat_offset * factor, lng_offset * factor), this.offsetStationPosition(other_station, lat_offset * factor, lng_offset * factor)]
+      result[line.name] = {coordinates: coords, lineWidth: 2}
+      return result
+    }, {})
+  }
+
+  getConnectingLines(a,b) {
+    return a.lines.filter((aline)=>b.lines.find((bline)=>bline === aline))
+  }
+
   getStationConnections(station) {
     return station.order.reduce((result, _, line_id) => {
       const line = station.lines.find((line)=>line.id === line_id)
@@ -66,15 +92,15 @@ export default class Map extends Component {
 
   render() {
     const {height, width} = Dimensions.get('window')
-    const annotations = this.state.stations.map(this.transformStation)
-    const connections=[]
-    
+    const stationMarkers = this.state.stations.map(this.transformStation)
+    const lineSegments = this.state.stations.reduce((lineSegments, station) => lineSegments + this.getStationConnections(station).map((lines, other_station)=> lines + this.drawLinesBetween(station, other_station)), [])
+
     return (
       <MapView
         style={{height, width}}
         region={this.state.region}
-        annotations={annotations}
-        overlays=[]
+        annotations={stationMarkers}
+        overlays={lineSegments}
       />
     )
   }
